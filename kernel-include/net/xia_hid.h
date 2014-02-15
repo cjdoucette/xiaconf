@@ -7,11 +7,14 @@
 /* Host Principal */
 #define XIDTYPE_HID (__cpu_to_be32(0x11))
 
+#define NWP_STATUS_MASK		0x80000000
+
 struct rtnl_xia_hid_hdw_addrs {
 	__u16		hha_len;
 	__u8		hha_addr_len;
 	__u8		hha_ha[MAX_ADDR_LEN];
 	int		hha_ifindex;
+	__u8		status;
 };
 
 static inline int RTHA_OK(struct rtnl_xia_hid_hdw_addrs *rtha, int len)
@@ -44,7 +47,7 @@ struct xip_hid_ctx {
 	/* Simplify scanning network devices. */
 	struct net		*net;
 
- 	/* NWP's state per struct net. */
+	/* NWP's state per struct net. */
 	atomic_t	to_announce;
 	atomic_t	announced;
 	atomic_t	me; /* Number of local HIDs in ctx.xpc_xtbl. */
@@ -78,6 +81,23 @@ struct hrdw_addr {
 	struct net_device	*dev;
 	struct xip_dst_anchor	anchor;
 	struct rcu_head		rcu_head;
+
+	/* Remote status and clock.
+	 * Bits 0-30: remote wall time (seconds).
+	 * Bit 31: 0 for failed, 1 for active. */
+	u32			remote_sc;
+
+	/* Local clock.
+	 * All bits: local wall time (seconds). */
+	u32			local_c;
+
+	spinlock_t		status_lock;
+
+	/* If @manual is true, this neighbor cannot be removed from the
+	 * neighbor list. Note: there are three bytes of alignment space
+	 * after @manual in this struct.
+	 */
+	u8			manual;
 
 	/* Since @ha is at the end of struct hrdw_addr, one doesn't need to
 	 * enforce alignment, otherwise use the following line:
@@ -136,6 +156,23 @@ struct hid_dev {
 	atomic_t		neigh_cnt;
 	spinlock_t		neigh_lock; /* Lock for the neighs list. */
 	struct list_head	neighs;
+
+	/* A timer that expires every NWP_INTERVAL seconds to begin a
+	 * new monitoring interval. The expiration of this timer
+	 * represents one period for the monitoring algorithm.
+	 * NWP_INTERVAL is defined in net/xia/ppal_hid.nwp.c.
+	 */
+	struct timer_list	monitor_timer;
+	/* Periodically expires to clean the neighbor list of failed nodes
+	 * that have been failed for at least NWP_FAILED_TTL.
+	 */
+	struct timer_list	clean_timer;
+
+	/* Flags for NWP monitoring (defined in net/xia/ppal_hid/nwp.c). */
+	u8			monitor_flags;
+
+	/* Hardware address of target currently being monitored. */
+	u8			target[MAX_ADDR_LEN];
 };
 
 static inline struct hid_dev *__hid_dev_get_rcu(const struct net_device *dev)

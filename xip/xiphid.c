@@ -568,8 +568,9 @@ static int print_neigh(const struct sockaddr_nl *who, struct nlmsghdr *n,
 
 			assert(!lladdr_ntop(rtha->hha_ha, rtha->hha_addr_len,
 				ha, sizeof(ha)));
-			fprintf(fp, "lladdr: %s\tdev: %s\n", ha,
-				ll_index_to_name(rtha->hha_ifindex));
+			fprintf(fp, "lladdr: %s\tdev: %s\tstatus: %s\n", ha,
+				ll_index_to_name(rtha->hha_ifindex),
+				rtha->status ? "active" : "failed");
 
 			len -= NLMSG_ALIGN(rtha->hha_len);
 			rtha = RTHA_NEXT(rtha);
